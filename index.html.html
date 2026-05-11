@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Job Pulse</title>
+  <meta name="description" content="AI-powered future career tracking dashboard">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react?external=react",
+        "firebase/app": "https://esm.sh/firebase@10.12.0/app",
+        "firebase/auth": "https://esm.sh/firebase@10.12.0/auth",
+        "firebase/firestore": "https://esm.sh/firebase@10.12.0/firestore"
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #020617; margin: 0; font-family: 'Inter', sans-serif; color: #0f172a; }
+    .tooltip-box { position: absolute; top: calc(100% + 8px); left: 0; width: 300px; background: #1e293b; color: #e2e8f0; font-size: 13px; padding: 14px; border-radius: 10px; z-index: 999; line-height: 1.6; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .tooltip-box::before { content:''; position:absolute; bottom:100%; left:20px; border:6px solid transparent; border-bottom-color:#1e293b; }
+    .btn-liquid { position:relative; background:linear-gradient(135deg,rgba(255,255,255,0.08) 0%,rgba(255,255,255,0.02) 100%); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.15); border-radius:14px; box-shadow:0 4px 16px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.1); transition:all 0.3s ease; }
+    .btn-liquid:hover { background:linear-gradient(135deg,rgba(255,255,255,0.14) 0%,rgba(255,255,255,0.05) 100%); border-color:rgba(255,255,255,0.25); box-shadow:0 8px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.15); transform:translateY(-1px); }
+    .btn-liquid:active { transform:translateY(0); }
+    .btn-liquid-indigo:hover { box-shadow:0 8px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.15),0 0 24px rgba(99,102,241,0.25); }
+    .btn-liquid-amber:hover { box-shadow:0 8px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.15),0 0 24px rgba(245,158,11,0.25); }
+    .btn-liquid-violet:hover { box-shadow:0 8px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.15),0 0 24px rgba(139,92,246,0.25); }
+    .glass-panel { background:linear-gradient(145deg,rgba(255,255,255,0.05) 0%,rgba(255,255,255,0.01) 100%); backdrop-filter:blur(40px) saturate(1.5); border:1px solid rgba(255,255,255,0.08); border-radius:20px; box-shadow:0 8px 32px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.06); }
+    .glass-panel-hover:hover { border-color:rgba(255,255,255,0.2); box-shadow:0 12px 40px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.1); }
+    .dark-scroll::-webkit-scrollbar { width:6px; }
+    .dark-scroll::-webkit-scrollbar-track { background:transparent; }
+    .dark-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:3px; }
+    .dark-scroll::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,0.2); }
+  </style>
+</head>
+<body>
+  <div id="error-log" style="color:red; background:#fff0f0; font-family:monospace; padding:16px; z-index:9999; position:relative; white-space:pre-wrap; display:none; border-bottom:2px solid #fca5a5;"></div>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.getElementById('error-log').style.display = 'block';
+      document.getElementById('error-log').innerHTML += '\nERROR: ' + msg + ' at line ' + line;
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      document.getElementById('error-log').style.display = 'block';
+      document.getElementById('error-log').innerHTML += '\nPROMISE ERROR: ' + e.reason;
+    });
+  </script>
+  <div id="root">
+    <div style="display:flex;justify-content:center;align-items:center;height:100vh;">
+      <h2 style="font-size:20px;color:#64748b;">Loading AI Modules...</h2>
+    </div>
+  </div>
+
+  <script id="jsx-code" type="text/plain">
+    const { useState, useEffect, useRef, useMemo } = window;
+    const { Search, Loader2, Save, X, Briefcase, Zap, TrendingUp, Filter, Map: MapIcon, Target, AlertCircle, CheckCircle, Info, ChevronRight, Sparkles, BrainCircuit, RefreshCw, Clock, HelpCircle, ExternalLink, GraduationCap, BarChart3, Home, Gauge, BookOpen, GitCompareArrows, Layers } = window.lucideReact;
+    const fb = window.fb || { ready: false };
+
+    const GEMINI_API_KEY = "AIzaSyAuePqZGikUUCb_4ikc_9TQ2IeiDe3AAcA";
+    let _quotaExhausted = false; // Track if Gemini quota is spent this session
+    
+    const _getSysMsg = (jsonMode) => jsonMode
+      ? 'You are a strict data analyst and career researcher. You MUST synthesize and analyze actual data from authoritative sources like the World Economic Forum (WEF), Bureau of Labor Statistics (BLS), ILO, McKinsey, and Harvard Business Review. Respond ONLY with valid raw JSON matching the exact schema requested. No markdown, no code fences, no generic answers. Base all predictions on real data.'
+      : 'You are an expert AI career analyst. You MUST base your analysis strictly on real data from authoritative sources like WEF, BLS, McKinsey, and HBR. Provide secure, proven, data-backed insights, not random or generic things. Be concise and clear. No markdown symbols unless explicitly asked.';
+
+    // PRIMARY: Google Gemini API
+    const _callGeminiDirect = async (prompt, jsonMode) => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+      const body = {
+        systemInstruction: { parts: [{ text: _getSysMsg(jsonMode) }] },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 }
+      };
+      if (jsonMode) body.generationConfig.responseMimeType = "application/json";
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        if (errText.includes('RESOURCE_EXHAUSTED') || errText.includes('quota')) {
+          _quotaExhausted = true;
+          throw new Error('API_QUOTA_EXCEEDED');
+        }
+        throw new Error(`Gemini HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error('Gemini returned no text.');
+      return text.trim();
+    };
+
+    // FALLBACK: Pollinations AI (free, no key needed)
+    const _callPollinationsFallback = async (prompt, jsonMode) => {
+      const fullPrompt = `${_getSysMsg(jsonMode)}\n\nUser: ${prompt}`;
+      const res = await fetch('https://text.pollinations.ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: fullPrompt }],
+          model: 'openai',
+          jsonMode: false,
+          seed: Math.floor(Math.random() * 1000000)
+        })
+      });
+      if (!res.ok) throw new Error(`Pollinations HTTP ${res.status}`);
+      const text = await res.text();
+      if (!text || text.includes('deprecation_notice') || text.includes('Queue full')) {
+        throw new Error('Pollinations returned error text');
+      }
+      return text.trim();
+    };
+
+    // UNIFIED: Try Gemini first, auto-fallback to Pollinations on quota exhaustion
+    const callGemini = async (prompt, jsonMode = false) => {
+      if (!_quotaExhausted) {
+        try {
+          return await _callGeminiDirect(prompt, jsonMode);
+        } catch (e) {
+          console.warn('Gemini failed:', e.message, '— falling back to Pollinations.');
+          if (e.message !== 'API_QUOTA_EXCEEDED') {
+            // Non-quota error, still try fallback
+          }
+        }
+      }
+      // Fallback path
+      return await _callPollinationsFallback(prompt, jsonMode);
+    };
+
+    // Robust JSON extractor
+    const extractJSON = (raw) => {
+      if (!raw) throw new Error('Empty API response');
+      let text = raw.replace(/^```(?:json)?\s*/im, '').replace(/\s*```\s*$/m, '').trim();
+      const firstArr = text.indexOf('[');
+      const firstObj = text.indexOf('{');
+      if (firstArr === -1 && firstObj === -1) throw new Error('No JSON found in response: ' + text.slice(0, 200));
+      const start = (firstArr !== -1 && (firstObj === -1 || firstArr < firstObj)) ? firstArr : firstObj;
+      const isArray = text[start] === '[';
+      const lastChar = isArray ? text.lastIndexOf(']') : text.lastIndexOf('}');
+      if (lastChar === -1) throw new Error('Malformed JSON in response');
+      
+      let extracted = text.slice(start, lastChar + 1);
+      // Clean up common glitch from some LLMs where they prepend duplicate braces like {"{ 
+      if (extracted.startsWith('{"{')) extracted = extracted.slice(2);
+      if (extracted.startsWith('[{"[')) extracted = '[{' + extracted.slice(4);
+      return extracted;
+    };
+
+    const jsonModel = {
+      generateContent: async (prompt) => {
+        const raw = await callGemini(prompt, true);
+        const cleaned = extractJSON(raw);
+        return { response: { text: () => cleaned } };
+      }
+    };
+    const textModel = {
+      generateContent: async (prompt) => {
+        const raw = await callGemini(prompt, false);
+        return { response: { text: () => raw } };
+      }
+    };
+
+    const SORT_OPTIONS = ["None","Highest Salary","Highest Demand","Best Work From Home","Most Future-Proof","Easiest to Enter","Most Hired Recently"];
+
+    const _s = [
+      ["AI/ML Engineer",["Python","TensorFlow","PyTorch"],"Optional","$130,000-$200,000 USD/yr",10,"High",92,7,98,340],
+      ["Generative AI Developer",["LLMs","Python","Prompt Engineering"],"Optional","$140,000-$210,000 USD/yr",10,"High",90,7,97,310],
+      ["Prompt Engineer",["NLP","Critical Thinking","AI Tools"],"No","$80,000-$130,000 USD/yr",9,"High",95,3,94,420],
+      ["Data Scientist",["Python","Statistics","SQL"],"Optional","$110,000-$170,000 USD/yr",9,"High",88,6,93,380],
+      ["Cloud Architect",["AWS","Azure","Kubernetes"],"Optional","$140,000-$200,000 USD/yr",9,"Medium",70,7,91,260],
+      ["Cybersecurity Analyst",["Network Security","SIEM","Threat Analysis"],"Optional","$95,000-$150,000 USD/yr",9,"Medium",65,6,95,350],
+      ["DevOps Engineer",["CI/CD","Docker","Terraform"],"No","$110,000-$165,000 USD/yr",8,"High",85,5,89,300],
+      ["Blockchain Developer",["Solidity","Web3","Smart Contracts"],"No","$120,000-$180,000 USD/yr",8,"High",88,6,78,140],
+      ["Quantum Computing Researcher",["Quantum Mechanics","Qiskit","Linear Algebra"],"Yes","$130,000-$200,000 USD/yr",10,"Low",35,9,72,45],
+      ["Robotics Engineer",["ROS","C++","Control Systems"],"Optional","$105,000-$160,000 USD/yr",9,"Low",25,8,82,120],
+      ["Full Stack Developer",["React","Node.js","PostgreSQL"],"No","$90,000-$150,000 USD/yr",7,"High",90,4,88,520],
+      ["UX Designer",["Figma","User Research","Prototyping"],"No","$85,000-$140,000 USD/yr",7,"High",88,4,80,290],
+      ["Product Manager (Tech)",["Strategy","Agile","Data Analysis"],"Optional","$120,000-$180,000 USD/yr",8,"Medium",72,5,86,240],
+      ["Site Reliability Engineer",["Linux","Monitoring","Go"],"No","$130,000-$190,000 USD/yr",8,"High",82,6,87,180],
+      ["Data Engineer",["Spark","Airflow","SQL"],"Optional","$115,000-$175,000 USD/yr",8,"High",85,5,90,310],
+      ["MLOps Engineer",["MLflow","Kubernetes","Python"],"Optional","$125,000-$185,000 USD/yr",9,"High",83,6,88,200],
+      ["AR/VR Developer",["Unity","C#","3D Modeling"],"No","$100,000-$160,000 USD/yr",9,"Medium",65,6,76,130],
+      ["IoT Solutions Architect",["Embedded Systems","MQTT","Cloud"],"Optional","$115,000-$170,000 USD/yr",8,"Medium",60,7,79,110],
+      ["Bioinformatics Scientist",["R","Genomics","Python"],"Yes","$90,000-$140,000 USD/yr",9,"Medium",55,8,74,85],
+      ["Sustainable Energy Engineer",["Solar","Grid Design","MATLAB"],"Yes","$85,000-$130,000 USD/yr",9,"Low",30,7,80,150],
+      ["Digital Twin Engineer",["Simulation","IoT","CAD"],"Optional","$110,000-$165,000 USD/yr",9,"Medium",60,7,77,90],
+      ["Edge Computing Specialist",["5G","Embedded Linux","Networking"],"Optional","$105,000-$155,000 USD/yr",8,"Medium",55,7,75,70],
+      ["NLP Engineer",["Transformers","Python","Linguistics"],"Optional","$120,000-$180,000 USD/yr",9,"High",85,7,91,190],
+      ["Computer Vision Engineer",["OpenCV","PyTorch","Image Processing"],"Optional","$115,000-$175,000 USD/yr",9,"High",80,7,89,170],
+      ["Autonomous Vehicle Engineer",["Sensor Fusion","C++","Deep Learning"],"Yes","$130,000-$200,000 USD/yr",10,"Low",20,9,78,60],
+      ["Healthcare AI Specialist",["Medical Imaging","Python","HIPAA"],"Yes","$120,000-$180,000 USD/yr",9,"Medium",55,8,85,100],
+      ["FinTech Developer",["Java","Payments API","Blockchain"],"No","$110,000-$170,000 USD/yr",8,"High",80,5,84,230],
+      ["Smart Contract Auditor",["Solidity","Security","DeFi"],"No","$130,000-$200,000 USD/yr",8,"High",90,6,73,65],
+      ["AI Ethics Consultant",["Policy","Philosophy","ML Fairness"],"Optional","$90,000-$140,000 USD/yr",8,"High",85,5,70,55],
+      ["Climate Tech Analyst",["Data Analysis","Carbon Markets","Python"],"Optional","$80,000-$125,000 USD/yr",8,"Medium",65,5,76,120],
+      ["Space Systems Engineer",["Orbital Mechanics","MATLAB","RF Design"],"Yes","$110,000-$170,000 USD/yr",9,"Low",15,9,71,40],
+      ["Neuromorphic Hardware Engineer",["Chip Design","Verilog","Neural Networks"],"Yes","$125,000-$190,000 USD/yr",10,"Low",20,9,68,25],
+      ["Digital Health Product Manager",["HealthTech","UX","Regulatory"],"Optional","$105,000-$160,000 USD/yr",8,"Medium",70,5,79,130],
+      ["Supply Chain AI Analyst",["Optimization","Python","Logistics"],"Optional","$85,000-$130,000 USD/yr",8,"Medium",60,5,81,160],
+      ["Computational Biologist",["Bioinformatics","Python","Statistics"],"Yes","$95,000-$145,000 USD/yr",9,"Medium",55,8,73,70],
+      ["3D Printing Engineer",["Additive Manufacturing","CAD","Materials Science"],"Optional","$80,000-$125,000 USD/yr",8,"Low",30,6,69,80],
+      ["Drone Operations Manager",["FAA Part 107","GIS","Logistics"],"No","$70,000-$110,000 USD/yr",7,"Low",25,4,72,95],
+      ["Synthetic Biology Engineer",["Gene Editing","CRISPR","Molecular Bio"],"Yes","$100,000-$155,000 USD/yr",10,"Low",20,9,74,35],
+      ["Human-Robot Interaction Designer",["UX","Psychology","Robotics"],"Optional","$90,000-$140,000 USD/yr",9,"Medium",60,6,71,50],
+      ["Precision Agriculture Tech",["Drones","Data Analytics","IoT"],"No","$70,000-$110,000 USD/yr",8,"Low",20,4,75,110],
+      ["AI UX Researcher",["User Research","AI Tools","Statistics"],"Optional","$95,000-$145,000 USD/yr",8,"High",85,5,77,105],
+      ["Quantum Software Developer",["Qiskit","Python","Quantum Algorithms"],"Yes","$120,000-$185,000 USD/yr",10,"Medium",60,9,70,30],
+      ["Energy Storage Engineer",["Battery Tech","Electrochemistry","MATLAB"],"Yes","$90,000-$140,000 USD/yr",9,"Low",25,8,78,90],
+      ["Digital Forensics Analyst",["Incident Response","Malware Analysis","Linux"],"Optional","$85,000-$135,000 USD/yr",8,"Medium",55,6,82,140],
+      ["Biomedical Data Scientist",["R","Clinical Data","Machine Learning"],"Yes","$100,000-$155,000 USD/yr",9,"Medium",60,7,80,95],
+      ["Smart City Planner",["Urban Data","GIS","IoT"],"Optional","$80,000-$125,000 USD/yr",8,"Low",30,5,73,75],
+      ["Haptics Engineer",["Mechanical Design","Signal Processing","C++"],"Yes","$95,000-$150,000 USD/yr",9,"Low",20,8,65,20],
+      ["AI Content Strategist",["SEO","AI Writing Tools","Analytics"],"No","$65,000-$105,000 USD/yr",7,"High",92,3,79,250],
+      ["Renewable Energy Systems Eng",["Solar","Wind","Power Electronics"],"Yes","$90,000-$140,000 USD/yr",9,"Low",25,7,81,130],
+      ["Cognitive Computing Architect",["Neural Networks","Cloud","System Design"],"Optional","$135,000-$200,000 USD/yr",9,"Medium",65,8,76,55]
+    ];
+    const SEED_JOBS = _s.map((j,i)=>({id:`seed-${i+1}`,title:j[0],skills:j[1],degree:j[2],salary:j[3],futureProof:j[4],wfh:j[5],wfhScore:j[6],entryDifficulty:j[7],demandScore:j[8],hiredLastWeek:j[9]}));
+
+    // ========== UTILS ==========
+    const parseSalary = (s) => {
+      if (!s || typeof s !== 'string') return 0;
+      const cleaned = s.replace(/[^0-9k\-.,]/gi, '');
+      const parts = cleaned.split('-');
+      const pn = (n) => { n = n.trim().toLowerCase(); return n.endsWith('k') ? parseFloat(n)*1000 : parseFloat(n.replace(/,/g,'')) || 0; };
+      return parts.length === 2 ? (pn(parts[0])+pn(parts[1]))/2 : pn(parts[0]);
+    };
+    const displayVal = (v) => { if(v===null||v===undefined) return "N/A"; if(typeof v==='object') return JSON.stringify(v); return String(v); };
+    const fetchWithRetry = async (fn, retries=3) => {
+      for(let i=0;i<retries;i++){
+        try{return await fn();}
+        catch(e){
+          if(i>=retries-1) throw e;
+          await new Promise(r=>setTimeout(r,Math.pow(2,i+1)*1000));
+        }
+      }
+    };
+
+    // ========== SCORE EXPLANATION HELPERS ==========
+    const getDemandExplanation = (score) => {
+      if (!score && score !== 0) return "No data available.";
+      if (score >= 90) return `A score of ${score}/100 means this role is in exceptional demand. Employers are actively competing for talent, job postings are surging, and candidates often receive multiple offers within days.`;
+      if (score >= 70) return `A score of ${score}/100 indicates strong market demand. There are significantly more open positions than qualified candidates, and hiring timelines are short.`;
+      if (score >= 50) return `A score of ${score}/100 reflects moderate demand. Positions exist but competition among candidates is balanced. Specialization can give you an edge.`;
+      return `A score of ${score}/100 suggests lower current demand. The field may be niche, emerging, or saturated. Consider building adjacent skills to improve prospects.`;
+    };
+    const getFutureProofExplanation = (score) => {
+      if (!score && score !== 0) return "No data available.";
+      if (score >= 9) return `${score}/10: This role is highly resilient to automation and economic shifts. It requires complex human judgment, creativity, or physical dexterity that AI cannot easily replicate.`;
+      if (score >= 7) return `${score}/10: Strong long-term outlook. While some tasks may be automated, the core responsibilities will remain relevant and in demand for the foreseeable future.`;
+      if (score >= 5) return `${score}/10: Moderate resilience. Parts of this role may evolve significantly due to AI or market changes. Continuous upskilling is recommended.`;
+      return `${score}/10: Higher risk of disruption. This role may be significantly transformed or reduced by automation within the next decade.`;
+    };
+    const getWfhExplanation = (wfh, wfhScore) => {
+      const s = wfhScore || 0;
+      if (s >= 80) return `Work From Home Score ${s}/100 (${wfh}): This role is highly compatible with remote work. Most tasks are digital, and the majority of employers offer full or flexible remote options.`;
+      if (s >= 50) return `Work From Home Score ${s}/100 (${wfh}): Partial remote work is common. Some tasks require on-site presence (meetings, hardware, labs), but many employers offer hybrid arrangements.`;
+      if (s >= 20) return `Work From Home Score ${s}/100 (${wfh}): Limited remote options. This role typically requires physical presence for hands-on work, equipment access, or in-person collaboration.`;
+      return `Work From Home Score ${s}/100 (${wfh}): This role is almost entirely on-site. The nature of the work (fieldwork, manufacturing, clinical) requires physical presence.`;
+    };
+    const getEntryExplanation = (score) => {
+      if (!score && score !== 0) return "No data available.";
+      if (score >= 8) return `${score}/10 difficulty: Very hard to break into. Typically requires advanced degrees, years of specialized experience, or passing rigorous licensing exams.`;
+      if (score >= 6) return `${score}/10 difficulty: Moderately challenging entry. A relevant degree or 2-3 years of targeted experience is usually expected. Bootcamps alone may not suffice.`;
+      if (score >= 4) return `${score}/10 difficulty: Accessible with focused effort. Self-taught paths, bootcamps, and certifications can open doors alongside or instead of formal degrees.`;
+      return `${score}/10 difficulty: Relatively easy to enter. Many employers value portfolios and practical skills over formal credentials. Great for career changers.`;
+    };
+
+    // ========== PROMPTS ==========
+    const PROMPTS = {
+      MARKET_BUILDER: (category, priorities) => `You are a strict career optimizer AI. Generate exactly 50 future-proof jobs for category: "${category}".
+CRITICAL: You must act as a strict optimizer. Do NOT generate generic jobs and sort them. Instead, actively brainstorm and exclusively select jobs that perfectly fit this exact combination of priorities: ${priorities.filter(p=>p!=='None').map((p,i)=>`Priority ${i+1}: ${p}`).join(', ')}.
+Return a raw JSON array. Each object must have exactly these keys:
+{"id":"unique-string","title":"Job Title","skills":["Skill1","Skill2","Skill3"],"degree":"Yes or No or Optional","salary":"$XX,000-$YY,000 USD/yr","futureProof":8,"wfh":"High or Medium or Low or None","wfhScore":85,"entryDifficulty":5,"demandScore":85,"hiredLastWeek":120}
+Do NOT include any fields called "global" or related to live job finding.`,
+
+      DEEP_SEARCH: (term) => `You are an expert AI Career Architect. Generate a complete profile for: "${term}".
+Return raw JSON with these exact keys: id, title, skills (array of 5), degree (Yes/No/Optional), salary (must include "USD/yr"), futureProof (1-10), wfh (High/Medium/Low/None), wfhScore (1-100), entryDifficulty (1-10), demandScore (1-100), hiredLastWeek (number), description (2-3 sentences, no markdown), specification (array of 5 bullet strings, no markdown).
+Do NOT include "global" or live job finding fields.`,
+
+      DETAILS: (title) => `Provide description and specification for: "${title}".
+Return raw JSON: {"description":"2-3 sentences, no markdown","specification":["Point 1","Point 2","Point 3","Point 4","Point 5"]}
+No asterisks, no hashes, no bolding.`,
+
+      DAILY_METRICS: (titles) => `Provide updated demandScore (1-100) and hiredLastWeek (number) for: ${titles}.
+Return raw JSON array: [{"title":"...","demandScore":N,"hiredLastWeek":N}]`,
+
+      ROADMAP: (title) => `Create a 5-step career progression plan to become a "${title}".
+Steps MUST be based on rigorous data analysis of real-world proven paths with high success rates, citing authoritative industry standards.
+STRICT RULES: Use simple numbered list (1. 2. 3. 4. 5.). NO markdown symbols (no asterisks, no hashes, no bolding). NO emojis. Use full forms only.`,
+
+      SKILL_GAP: (title, skills, bg) => `Perform a strict, deep data-driven analysis comparing this background: "${bg}" against the actual required industry skills for "${title}": ${skills.join(', ')}.
+Output exactly 3 sections:
+1. Current Alignment (Based on real market demand)
+2. Key Skill Gaps (Identify exact missing technical or soft skills)
+3. Recommended Action Plan (Data-backed courses of action)
+NO markdown symbols. NO emojis. Use full forms. Do not give generic answers.`
+    };
+
+    // ========== COMPONENT ==========
+    function FutureJobsPulse() {
+      const [jobs, setJobs] = useState([]);
+      const [lastSyncDate, setLastSyncDate] = useState("Never");
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+      const [filterQuery, setFilterQuery] = useState("");
+      const [deepSearchQuery, setDeepSearchQuery] = useState("");
+      const [deepSearchLoading, setDeepSearchLoading] = useState(false);
+      const [savedJobs, setSavedJobs] = useState([]);
+      const [showCompare, setShowCompare] = useState(false);
+
+      // Market Builder
+      const [mbCategory, setMbCategory] = useState("Technology");
+      const [mbSort1, setMbSort1] = useState("Highest Salary");
+      const [mbSort2, setMbSort2] = useState("Most Future-Proof");
+      const [mbSort3, setMbSort3] = useState("None");
+      const [mbLoading, setMbLoading] = useState(false);
+
+      // Modal
+      const [selectedJob, setSelectedJob] = useState(null);
+      const [modalTab, setModalTab] = useState("details");
+      const [modalLoading, setModalLoading] = useState(false);
+      const [roadmapData, setRoadmapData] = useState("");
+      const [roadmapLoading, setRoadmapLoading] = useState(false);
+      const [skillGapInput, setSkillGapInput] = useState("");
+      const [skillGapData, setSkillGapData] = useState("");
+      const [skillGapLoading, setSkillGapLoading] = useState(false);
+      const [activeTooltip, setActiveTooltip] = useState(null);
+      
+      const toggleTooltip = (name) => setActiveTooltip(prev => prev === name ? null : name);
+
+      const showToast = (message, type = 'info') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 4000);
+      };
+
+      const isJobSaved = (jobId) => savedJobs.some(sj => sj.id === jobId);
+
+      const toggleSaveJob = (job) => {
+        setSavedJobs(prev => {
+          const exists = prev.some(sj => sj.id === job.id);
+          const next = exists ? prev.filter(sj => sj.id !== job.id) : [...prev, { ...job }];
+          localStorage.setItem('fjp_savedJobs', JSON.stringify(next));
+          return next;
+        });
+      };
+
+      const clearAllSaved = () => {
+        setSavedJobs([]);
+        localStorage.setItem('fjp_savedJobs', JSON.stringify([]));
+        setShowCompare(false);
+        showToast('All saved jobs cleared.', 'info');
+      };
+
+      const saveData = async (newJobs) => {
+        const data = { jobs: newJobs, updatedAt: new Date().toISOString() };
+        localStorage.setItem('fjp_globalState', JSON.stringify(data));
+        setLastSyncDate(new Date(data.updatedAt).toLocaleString());
+        if (fb.ready) {
+          try { await fb.setDoc(fb.doc('market_trends/global'), data); } catch(e) { console.warn('Firestore write failed:', e); }
+        }
+      };
+
+      const applySorts = (jobList) => {
+        let sorted = [...jobList];
+        const sortFns = {
+          "Highest Salary": (a,b) => parseSalary(b.salary) - parseSalary(a.salary),
+          "Highest Demand": (a,b) => (b.demandScore||0) - (a.demandScore||0),
+          "Best Work From Home": (a,b) => (b.wfhScore||0) - (a.wfhScore||0),
+          "Most Future-Proof": (a,b) => (b.futureProof||0) - (a.futureProof||0),
+          "Easiest to Enter": (a,b) => (a.entryDifficulty||0) - (b.entryDifficulty||0),
+          "Most Hired Recently": (a,b) => (b.hiredLastWeek||0) - (a.hiredLastWeek||0),
+        };
+        [mbSort3, mbSort2, mbSort1].forEach(s => { if (s !== "None" && sortFns[s]) sorted.sort(sortFns[s]); });
+        return sorted;
+      };
+
+      // Firebase snapshot listener
+      useEffect(() => {
+        if (!fb.ready) return;
+        try {
+          const unsub = fb.onSnapshot(fb.doc('market_trends/global'), (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (data.jobs && data.jobs.length > 0) {
+                setJobs(data.jobs);
+                setLastSyncDate(data.updatedAt ? new Date(data.updatedAt).toLocaleString() : "Never");
+                setLoading(false);
+              }
+            }
+          });
+          return unsub;
+        } catch(e) { console.warn('Firestore listener failed:', e); }
+      }, []);
+
+      // Init data
+      useEffect(() => {
+        const saved = localStorage.getItem('fjp_savedJobs');
+        if (saved) { try { setSavedJobs(JSON.parse(saved)); } catch(e) {} }
+
+        const initData = async () => {
+          try {
+            const stored = localStorage.getItem('fjp_globalState');
+            if (stored) {
+              const data = JSON.parse(stored);
+              if (data.updatedAt) setLastSyncDate(new Date(data.updatedAt).toLocaleString());
+              setJobs(data.jobs || SEED_JOBS);
+              setLoading(false);
+              
+              const alreadyRefreshedThisSession = sessionStorage.getItem('fjp_refreshed');
+              const lastUp = data.updatedAt ? new Date(data.updatedAt) : new Date(0);
+              const todayGMT = new Date(); todayGMT.setUTCHours(0,0,0,0);
+              if (!alreadyRefreshedThisSession && lastUp < todayGMT) {
+                sessionStorage.setItem('fjp_refreshed', '1');
+                showToast("Refreshing daily metrics...", "info");
+                triggerDailyRefresh(data.jobs || SEED_JOBS);
+              }
+            } else {
+              setJobs(SEED_JOBS);
+              await saveData(SEED_JOBS);
+              setLoading(false);
+              showToast("Loaded 50 seeded future-proof jobs.", "success");
+            }
+          } catch(e) {
+            console.error('Init error:', e);
+            setJobs(SEED_JOBS);
+            setLoading(false);
+          }
+        };
+        setTimeout(() => { if (jobs.length === 0) initData(); }, fb.ready ? 2000 : 0);
+      }, []);
+
+      const triggerDailyRefresh = async (currentJobs) => {
+        try {
+          const titles = currentJobs.slice(0,20).map(j=>j.title).join(", ");
+          const result = await fetchWithRetry(() => jsonModel.generateContent(PROMPTS.DAILY_METRICS(titles)));
+          const updates = JSON.parse(result.response.text());
+          const updated = currentJobs.map(job => {
+            const u = updates.find(x => x.title === job.title);
+            return u ? { ...job, demandScore: u.demandScore, hiredLastWeek: u.hiredLastWeek } : job;
+          });
+          await saveData(updated);
+          setJobs(updated);
+          showToast("Daily metrics updated!", "success");
+        } catch(e) {
+          console.error(e);
+          showToast('Failed to refresh metrics.', 'error');
+          setJobs(currentJobs);
+        } finally { setLoading(false); }
+      };
+
+      const generateMarketBuilder = async () => {
+        setMbLoading(true); setLoading(true);
+        const priorities = [mbSort1, mbSort2, mbSort3];
+        try {
+          const result = await fetchWithRetry(() => jsonModel.generateContent(PROMPTS.MARKET_BUILDER(mbCategory, priorities)));
+          let newJobs = JSON.parse(result.response.text());
+          newJobs = applySorts(newJobs);
+          await saveData(newJobs);
+          setJobs(newJobs);
+          showToast(`Market optimized for: ${mbCategory}`, "success");
+        } catch(e) {
+          console.error(e);
+          showToast('Failed to generate market.', 'error');
+        } finally { setMbLoading(false); setLoading(false); }
+      };
+
+      const handleDeepSearch = async () => {
+        if (!deepSearchQuery) return;
+        setDeepSearchLoading(true);
+        try {
+          const result = await fetchWithRetry(() => jsonModel.generateContent(PROMPTS.DEEP_SEARCH(deepSearchQuery)));
+          const jobObj = JSON.parse(result.response.text());
+          handleOpenModal(jobObj, true);
+          showToast("AI Profile generated!", "success");
+        } catch(e) { console.error(e); showToast('Deep Search failed.', 'error'); }
+        finally { setDeepSearchLoading(false); }
+      };
+
+      const handleOpenModal = async (job, isDeepSearch = false) => {
+        setSelectedJob(job); setModalTab("details"); setRoadmapData(""); setSkillGapData(""); setSkillGapInput("");
+        if (!isDeepSearch && (!job.description || !job.specification)) {
+          setModalLoading(true);
+          try {
+            const result = await fetchWithRetry(() => jsonModel.generateContent(PROMPTS.DETAILS(job.title)));
+            const details = JSON.parse(result.response.text());
+            const updated = { ...job, description: details.description, specification: details.specification };
+            setSelectedJob(updated);
+            const nj = jobs.map(j => j.id === job.id ? updated : j);
+            setJobs(nj); await saveData(nj);
+          } catch(e) { console.error(e); showToast("Failed to load details.", "error"); }
+          finally { setModalLoading(false); }
+        }
+      };
+
+      const generateRoadmap = async () => {
+        if (roadmapData || !selectedJob) return;
+        setRoadmapLoading(true);
+        try {
+          const result = await fetchWithRetry(() => textModel.generateContent(PROMPTS.ROADMAP(selectedJob.title)));
+          setRoadmapData(result.response.text());
+        } catch(e) { console.error(e); showToast('Failed to generate roadmap.', 'error'); }
+        finally { setRoadmapLoading(false); }
+      };
+
+      const generateSkillGap = async () => {
+        if (!skillGapInput) { showToast("Enter your background first.", "error"); return; }
+        setSkillGapLoading(true);
+        try {
+          const result = await fetchWithRetry(() => textModel.generateContent(PROMPTS.SKILL_GAP(selectedJob.title, selectedJob.skills||[], skillGapInput)));
+          setSkillGapData(result.response.text());
+        } catch(e) { console.error(e); showToast('Skill gap analysis failed.', 'error'); }
+        finally { setSkillGapLoading(false); }
+      };
+
+      const handleRefreshTrends = () => {
+        if (jobs.length === 0) { showToast("No jobs loaded. Generate a market first.", "error"); return; }
+        setLoading(true);
+        triggerDailyRefresh(jobs);
+      };
+
+      const filteredJobs = useMemo(() => {
+        const filtered = jobs.filter(j => j.title?.toLowerCase().includes(filterQuery.toLowerCase()));
+        return applySorts(filtered);
+      }, [jobs, filterQuery, mbSort1, mbSort2, mbSort3]);
+
+      const ProgressBar = ({ value, max = 100, color = "bg-indigo-500/100" }) => (
+        <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+          <div className={`h-2 rounded-full ${color} transition-all duration-700 ease-out`} style={{ width: `${Math.min((value/max)*100,100)}%` }}></div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black text-slate-100 font-sans relative">
+          
+          {/* Toast Notification */}
+          {toast.show && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-2 duration-300">
+              <div className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium backdrop-blur-xl ${toast.type==='error' ? 'bg-red-500/20 border-red-500/30 text-red-300' : toast.type==='info' ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'}`}>
+                {toast.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle size={16}/>}
+                {toast.message}
+              </div>
+            </div>
+          )}
+
+          {/* Header */}
+          <header className="sticky top-0 z-40 bg-slate-900/40 backdrop-blur-xl border-b border-white/10 px-6 py-3 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+            <div className="max-w-7xl mx-auto flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-br from-indigo-500 to-emerald-500 p-2 rounded-lg text-white">
+                  <TrendingUp size={22} strokeWidth={2.5}/>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-white">Job Pulse</h1>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Clock size={11}/> <span>Auto-updated 12:00 AM GMT</span>
+                    <span className="text-slate-300">|</span>
+                    <span>Last Sync: {lastSyncDate}</span>
+                  </div>
+                </div>
+              </div>
+              <button onClick={handleRefreshTrends} disabled={loading}
+                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10 disabled:opacity-50">
+                <RefreshCw size={15} className={loading ? "animate-spin text-indigo-500" : ""}/> Refresh Trends
+              </button>
+            </div>
+          </header>
+
+          <main className="max-w-[1400px] mx-auto px-6 py-6 flex flex-col lg:flex-row gap-6" style={{height:'calc(100vh - 64px)'}}>
+            {/* Sidebar */}
+            <div className="lg:w-[320px] flex-shrink-0 space-y-5 overflow-y-auto dark-scroll" style={{maxHeight:'calc(100vh - 88px)'}}>
+              {/* Market Builder */}
+              <div className="glass-panel p-5">
+                <h2 className="text-sm font-semibold flex items-center gap-2 mb-4 text-white uppercase tracking-wide">
+                  <Filter size={15} className="text-indigo-500"/> Market Builder
+                </h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block font-medium">Category / Industry</label>
+                    <div className="relative">
+                      <input type="text" value={mbCategory} onChange={(e) => setMbCategory(e.target.value)}
+                        className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"/>
+                      {mbCategory && (
+                        <button onClick={() => setMbCategory('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300">
+                          <X size={14}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block font-medium">Priority 1 (Highest)</label>
+                    <select value={mbSort1} onChange={(e) => setMbSort1(e.target.value)}
+                      className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400">
+                      {SORT_OPTIONS.filter(o=>o!=='None').map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block font-medium">Priority 2</label>
+                    <select value={mbSort2} onChange={(e) => setMbSort2(e.target.value)}
+                      className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400">
+                      {SORT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block font-medium">Priority 3</label>
+                    <select value={mbSort3} onChange={(e) => setMbSort3(e.target.value)}
+                      className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400">
+                      {SORT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={generateMarketBuilder} disabled={mbLoading}
+                    className="btn-liquid btn-liquid-indigo w-full flex items-center justify-center gap-2 bg-indigo-600/80 hover:bg-indigo-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50 mt-2">
+                    {mbLoading ? <Loader2 size={15} className="animate-spin"/> : <TrendingUp size={15}/>} Generate Market
+                  </button>
+                </div>
+              </div>
+
+              {/* Deep Search */}
+              <div className="glass-panel p-5">
+                <h2 className="text-sm font-semibold flex items-center gap-2 mb-3 text-white uppercase tracking-wide">
+                  <Sparkles size={15} className="text-amber-500"/> Instant Deep Search
+                </h2>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15}/>
+                  <input type="text" placeholder="e.g. Quantum Prompt Engineer..."
+                    value={deepSearchQuery} onChange={(e) => setDeepSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleDeepSearch()}
+                    className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all placeholder:text-slate-400"/>
+                </div>
+                <button onClick={handleDeepSearch} disabled={deepSearchLoading || !deepSearchQuery}
+                  className="btn-liquid btn-liquid-amber w-full flex items-center justify-center gap-2 bg-amber-500/80 hover:bg-amber-500 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
+                  {deepSearchLoading ? <Loader2 size={15} className="animate-spin"/> : <Sparkles size={15}/>} Deep Search
+                </button>
+              </div>
+
+              {/* Saved Jobs */}
+              <div className="glass-panel p-5">
+                <h2 className="text-sm font-semibold flex items-center gap-2 mb-3 text-white uppercase tracking-wide">
+                  <Save size={15} className="text-emerald-500"/> Saved Jobs
+                  <span className="ml-auto text-xs font-normal text-slate-400">{savedJobs.length} saved</span>
+                </h2>
+                {savedJobs.length === 0 ? (
+                  <p className="text-xs text-slate-400 leading-relaxed">Save jobs using the bookmark icon on any card. Saved jobs persist even when you generate a new market.</p>
+                ) : (
+                  <>
+                    <div className="space-y-1.5 mb-3 max-h-48 overflow-y-auto dark-scroll">
+                      {savedJobs.map(sJob => (
+                        <div key={sJob.id} onClick={() => handleOpenModal(sJob, true)} className="flex items-center justify-between text-xs bg-white/5 hover:bg-white/10 rounded-lg px-3 py-2 border border-white/5 cursor-pointer transition-colors">
+                          <div className="truncate mr-2">
+                            <span className="font-medium text-slate-300">{sJob.title}</span>
+                            <span className="text-slate-500 ml-2">{sJob.salary ? sJob.salary.split('-')[0] : ''}</span>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); toggleSaveJob(sJob); }} className="text-red-400 hover:text-red-300 flex-shrink-0" title="Remove from saved"><X size={12}/></button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowCompare(!showCompare)} disabled={savedJobs.length < 2}
+                        className="btn-liquid btn-liquid-violet flex-1 flex items-center justify-center gap-2 bg-violet-600/80 hover:bg-violet-600 text-white px-3 py-2.5 text-sm font-semibold disabled:opacity-40">
+                        <GitCompareArrows size={14}/> {showCompare ? 'Hide' : 'Compare'}
+                      </button>
+                      <button onClick={clearAllSaved}
+                        className="btn-liquid flex items-center justify-center gap-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-300 hover:text-red-200 px-3 py-2.5 text-sm font-semibold border-red-500/20">
+                        <X size={14}/> Clear All
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 space-y-6 min-w-0 overflow-y-auto dark-scroll" style={{maxHeight:'calc(100vh - 88px)'}}>
+              <div className="glass-panel p-6 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-emerald-500 to-amber-500 opacity-50"></div>
+                <h2 className="text-lg font-bold text-white mb-2 tracking-tight">About This Platform</h2>
+                <p className="text-sm text-slate-400 leading-relaxed mb-6">
+                  Welcome to Job Pulse. This AI-powered tool tracks the top 50 future-proof careers, adapting dynamically to global market shifts based purely on verified institutional data.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+                    <div className="bg-indigo-500/20 p-1.5 rounded-lg"><Info size={14} className="text-indigo-400"/></div>
+                    <span className="text-xs text-slate-300"><strong className="text-white font-medium">Explore</strong> details & salaries</span>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+                    <div className="bg-emerald-500/20 p-1.5 rounded-lg"><BookOpen size={14} className="text-emerald-400"/></div>
+                    <span className="text-xs text-slate-300"><strong className="text-white font-medium">Generate</strong> AI roadmaps</span>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+                    <div className="bg-amber-500/20 p-1.5 rounded-lg"><BrainCircuit size={14} className="text-amber-400"/></div>
+                    <span className="text-xs text-slate-300"><strong className="text-white font-medium">Analyze</strong> skill gaps</span>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+                    <div className="bg-violet-500/20 p-1.5 rounded-lg"><Sparkles size={14} className="text-violet-400"/></div>
+                    <span className="text-xs text-slate-300"><strong className="text-white font-medium">Deep Search</strong> any job</span>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+                    <div className="bg-cyan-500/20 p-1.5 rounded-lg"><GitCompareArrows size={14} className="text-cyan-400"/></div>
+                    <span className="text-xs text-slate-300"><strong className="text-white font-medium">Compare</strong> jobs side by side</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comparison Matrix */}
+              {showCompare && savedJobs.length >= 2 && (
+                <div className="bg-white/[0.03] backdrop-blur-2xl border border-violet-500/20 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.2)] overflow-x-auto">
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                    <GitCompareArrows size={16} className="text-violet-500"/> Job Comparison Matrix
+                    <button onClick={() => setShowCompare(false)} className="ml-auto text-slate-400 hover:text-white transition-colors"><X size={16}/></button>
+                  </h3>
+                  <table className="w-full text-xs border-collapse mt-4">
+                    <thead>
+                      <tr className="border-b border-white/10">
+                        <th className="text-left py-3 px-4 text-slate-400 font-medium w-40 border-b border-white/10">Criteria</th>
+                        {savedJobs.map(sJob => (
+                          <th key={sJob.id} className="text-center py-3 px-4 text-white font-semibold border-b border-white/10">{sJob.title}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: 'Salary', key: 'salary', render: (j) => displayVal(j.salary) },
+                        { label: 'Demand Score', key: 'demandScore', render: (j) => <span className={`font-semibold ${(j.demandScore||0) >= 80 ? 'text-emerald-400' : (j.demandScore||0) >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{displayVal(j.demandScore)}/100</span> },
+                        { label: 'Future Proof', key: 'futureProof', render: (j) => <span className={`font-semibold ${(j.futureProof||0) >= 8 ? 'text-indigo-400' : (j.futureProof||0) >= 5 ? 'text-amber-400' : 'text-red-400'}`}>{displayVal(j.futureProof)}/10</span> },
+                        { label: 'Entry Difficulty', key: 'entryDifficulty', render: (j) => <span className={`font-semibold ${(j.entryDifficulty||0) <= 4 ? 'text-emerald-400' : (j.entryDifficulty||0) <= 6 ? 'text-amber-400' : 'text-red-400'}`}>{displayVal(j.entryDifficulty)}/10</span> },
+                        { label: 'Work From Home', key: 'wfh', render: (j) => <span>{displayVal(j.wfh)} ({displayVal(j.wfhScore)}/100)</span> },
+                        { label: 'Degree Required', key: 'degree', render: (j) => <span className={`font-medium ${j.degree === 'No' ? 'text-emerald-400' : j.degree === 'Optional' ? 'text-amber-400' : 'text-red-400'}`}>{displayVal(j.degree)}</span> },
+                        { label: 'Hired Last Week', key: 'hiredLastWeek', render: (j) => displayVal(j.hiredLastWeek) },
+                        { label: 'Top Skills', key: 'skills', render: (j) => Array.isArray(j.skills) ? j.skills.slice(0,3).join(', ') : 'N/A' },
+                      ].map((row, ri) => (
+                        <tr key={row.key} className={ri % 2 === 0 ? "bg-white/[0.02]" : "bg-transparent"}>
+                          <td className="py-3 px-4 font-medium text-slate-300 border-r border-white/5">{row.label}</td>
+                          {savedJobs.map(sJob => (
+                            <td key={sJob.id} className="text-center py-3 px-4 text-slate-300">{row.render(sJob)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {showCompare && savedJobs.length < 2 && (
+                <div className="bg-violet-500/10 backdrop-blur-2xl border border-violet-500/20 rounded-2xl p-4 text-center text-sm text-violet-300">
+                  Save at least 2 jobs to compare them. Use the bookmark icon on any job card.
+                </div>
+              )}
+
+              {/* Filter bar */}
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                <input type="text" placeholder="Filter loaded jobs..." value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)}
+                  className="w-full bg-white/[0.03] backdrop-blur-2xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.2)] rounded-2xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all placeholder:text-slate-500"/>
+              </div>
+
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[1,2,3,4,5,6].map(i => <div key={i} className="animate-pulse bg-white/5 rounded-2xl h-56 border border-white/10"></div>)}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredJobs.map((job, idx) => (
+                    <div key={job.id||idx} onClick={() => handleOpenModal(job)}
+                      className="group glass-panel glass-panel-hover p-6 transition-all duration-300 flex flex-col h-full cursor-pointer relative overflow-hidden">
+
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors leading-tight">
+                          {displayVal(job.title)}
+                        </h3>
+                        <button onClick={(e) => { e.stopPropagation(); toggleSaveJob(job); }}
+                          title={isJobSaved(job.id) ? "Remove from saved jobs" : "Save this job for later"}
+                          className="p-1.5 hover:bg-white/20 rounded-full transition-colors relative group/bm">
+                          <Save size={16} className={isJobSaved(job.id) ? "fill-emerald-500 text-emerald-500" : "text-slate-400"}/>
+                          <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/bm:opacity-100 transition-opacity pointer-events-none">
+                            {isJobSaved(job.id) ? "Saved" : "Save Job"}
+                          </span>
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {Array.isArray(job.skills) && job.skills.slice(0,3).map(s => (
+                          <span key={s} className="bg-indigo-500/10 text-indigo-400 text-xs px-2 py-0.5 rounded-md font-medium border border-indigo-500/20">
+                            {displayVal(s).replace(/[\*#_]/g,'').trim()}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="text-xs text-slate-400 mb-3 font-medium">{displayVal(job.salary)}</div>
+
+                      <div className="mt-auto space-y-2">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-400 block mb-1">Demand</span>
+                            <span className="font-semibold text-emerald-400">{displayVal(job.demandScore)}/100</span>
+                            <ProgressBar value={job.demandScore} max={100} color="bg-emerald-500/100"/>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block mb-1">Future Proof</span>
+                            <span className="font-semibold text-indigo-400">{displayVal(job.futureProof)}/10</span>
+                            <ProgressBar value={job.futureProof} max={10} color="bg-indigo-500/100"/>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                          <div className="flex items-center gap-3 text-xs text-slate-400">
+                            <span className="flex items-center gap-1"><Home size={12}/> Work From Home: {displayVal(job.wfh)}</span>
+                            <span className="flex items-center gap-1"><Gauge size={12}/> Entry: {displayVal(job.entryDifficulty)}/10</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleOpenModal(job); setModalTab("details"); }}
+                            className="flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
+                            <Info size={12}/> Details
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleOpenModal(job); setTimeout(()=>{setModalTab("roadmap"); generateRoadmap();},100); }}
+                            className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
+                            <BookOpen size={12}/> Roadmap
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleOpenModal(job); setTimeout(()=>setModalTab("skillgap"),100); }}
+                            className="flex items-center gap-1 text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors">
+                            <BrainCircuit size={12}/> Skill Gap
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredJobs.length === 0 && (
+                    <div className="col-span-full py-16 text-center text-slate-400">
+                      <Search size={40} className="mx-auto mb-3 opacity-30"/>
+                      <p className="text-sm">No jobs match your filter.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* Modal */}
+          {selectedJob && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setSelectedJob(null)}></div>
+              <div className="relative w-full max-w-3xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+                {/* Modal Header */}
+                <div className="px-6 py-4 border-b border-white/10 flex justify-between items-start bg-white/5">
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-1">{displayVal(selectedJob.title)}</h2>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+                      <span className="flex items-center gap-1"><Briefcase size={12}/> {displayVal(selectedJob.salary)}</span>
+                      <span className="flex items-center gap-1"><Home size={12}/> Work From Home: {displayVal(selectedJob.wfh)}</span>
+                      <span className="flex items-center gap-1 relative">
+                        <GraduationCap size={12}/> Degree: {displayVal(selectedJob.degree)}
+                        <button onClick={(e) => { e.stopPropagation(); toggleTooltip('degree'); }} className="ml-1 text-indigo-500 hover:text-indigo-700">
+                          <HelpCircle size={13}/>
+                        </button>
+                        {activeTooltip === 'degree' && (
+                          <div className="tooltip-box">
+                            <strong className="block mb-1 text-white text-sm">Credentialism vs. Skills-Based Economy</strong>
+                            <p className="mb-1"><strong className="text-indigo-300">Credentialism:</strong> Some fields (medicine, law, licensed engineering) have strict formal degree requirements as legal gatekeepers. A degree is non-negotiable.</p>
+                            <p><strong className="text-emerald-300">Skills-Based:</strong> In the modern tech and creative economy, portfolios, certifications, and demonstrated skills often matter more than diplomas. Many top employers now hire based on ability, not credentials.</p>
+                          </div>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setSelectedJob(null); setActiveTooltip(null); }} className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-white/20 rounded-full transition-colors">
+                    <X size={20}/>
+                  </button>
+                </div>
+
+                {/* Modal Tabs */}
+                <div className="flex border-b border-white/10 bg-white/5 px-6">
+                  {[{key:'details',label:'Overview',Icon:Info},{key:'roadmap',label:'AI Roadmap',Icon:BookOpen},{key:'skillgap',label:'Skill Gap',Icon:BrainCircuit}].map(tab => {
+                    const TabIcon = tab.Icon;
+                    return (
+                    <button key={tab.key}
+                      onClick={() => { setModalTab(tab.key); if(tab.key==='roadmap') generateRoadmap(); }}
+                      className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${modalTab===tab.key ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>
+                      <TabIcon size={14}/> {tab.label}
+                    </button>
+                    );
+                  })}
+                </div>
+
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto p-6">
+
+                  {modalTab === 'details' && (
+                    <div className="space-y-6">
+                      {modalLoading ? (
+                        <div className="flex justify-center py-10"><Loader2 size={28} className="animate-spin text-indigo-500"/></div>
+                      ) : (
+                        <>
+                          <div>
+                            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-1.5"><Info size={14} className="text-indigo-500"/> Description</h3>
+                            <p className="text-sm text-slate-300 leading-relaxed bg-white/5 p-4 rounded-lg border border-white/5">{displayVal(selectedJob.description)}</p>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-white mb-2">Specification</h3>
+                            <ul className="space-y-1.5">
+                              {Array.isArray(selectedJob.specification) ? selectedJob.specification.map((spec, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                                  <CheckCircle size={14} className="mt-0.5 text-emerald-500 flex-shrink-0"/>
+                                  {displayVal(spec).replace(/[\*#_]/g,'').trim()}
+                                </li>
+                              )) : <p className="text-sm text-slate-400">Not available.</p>}
+                            </ul>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="relative text-center p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                              <p className="text-2xl font-bold text-emerald-400">{displayVal(selectedJob.demandScore)}</p>
+                              <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1">Demand Score
+                                <button onClick={(e) => { e.stopPropagation(); toggleTooltip('demand'); }} className="text-indigo-400 hover:text-indigo-400"><HelpCircle size={12}/></button>
+                              </p>
+                              {activeTooltip === 'demand' && <div className="tooltip-box">{getDemandExplanation(selectedJob.demandScore)}</div>}
+                            </div>
+                            <div className="relative text-center p-3 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
+                              <p className="text-2xl font-bold text-indigo-400">{displayVal(selectedJob.futureProof)}/10</p>
+                              <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1">Future Proof
+                                <button onClick={(e) => { e.stopPropagation(); toggleTooltip('futureproof'); }} className="text-indigo-400 hover:text-indigo-400"><HelpCircle size={12}/></button>
+                              </p>
+                              {activeTooltip === 'futureproof' && <div className="tooltip-box">{getFutureProofExplanation(selectedJob.futureProof)}</div>}
+                            </div>
+                            <div className="relative text-center p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                              <p className="text-2xl font-bold text-amber-400">{displayVal(selectedJob.wfhScore)}</p>
+                              <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1">Work From Home
+                                <button onClick={(e) => { e.stopPropagation(); toggleTooltip('wfh'); }} className="text-indigo-400 hover:text-indigo-400"><HelpCircle size={12}/></button>
+                              </p>
+                              {activeTooltip === 'wfh' && <div className="tooltip-box">{getWfhExplanation(selectedJob.wfh, selectedJob.wfhScore)}</div>}
+                            </div>
+                            <div className="relative text-center p-3 bg-white/5 rounded-lg border border-white/10">
+                              <p className="text-2xl font-bold text-slate-200">{displayVal(selectedJob.hiredLastWeek)}</p>
+                              <p className="text-xs text-slate-400 mt-1">Hired Last Wk</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="relative p-3 bg-white/5 rounded-lg border border-white/5">
+                              <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">Entry Difficulty
+                                <button onClick={(e) => { e.stopPropagation(); toggleTooltip('entry'); }} className="text-indigo-400 hover:text-indigo-400"><HelpCircle size={12}/></button>
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-200">{displayVal(selectedJob.entryDifficulty)}/10</span>
+                                <ProgressBar value={selectedJob.entryDifficulty} max={10} color="bg-orange-500"/>
+                              </div>
+                              {activeTooltip === 'entry' && <div className="tooltip-box">{getEntryExplanation(selectedJob.entryDifficulty)}</div>}
+                            </div>
+                            <div className="p-3 bg-white/5 rounded-lg border border-white/5">
+                              <p className="text-xs text-slate-400 mb-1">Work From Home Compatibility</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-200">{displayVal(selectedJob.wfhScore)}/100</span>
+                                <ProgressBar value={selectedJob.wfhScore} max={100} color="bg-sky-500/100"/>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {modalTab === 'roadmap' && (
+                    <div>
+                      {roadmapLoading ? (
+                        <div className="flex justify-center py-10"><Loader2 size={28} className="animate-spin text-indigo-500"/></div>
+                      ) : (
+                        <div className="text-sm text-slate-200 whitespace-pre-wrap bg-white/5 p-5 rounded-lg border border-white/5 leading-relaxed">
+                          {roadmapData || "Click the AI Roadmap tab to generate."}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {modalTab === 'skillgap' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-200 mb-1.5">Paste your background/resume summary:</label>
+                        <textarea rows={3} value={skillGapInput} onChange={(e) => setSkillGapInput(e.target.value)}
+                          className="w-full bg-slate-900/50 border border-white/10 text-white rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all placeholder:text-slate-400"
+                          placeholder="e.g. 3 years in JavaScript, basic Python, some data analysis..."/>
+                      </div>
+                      <button onClick={generateSkillGap} disabled={skillGapLoading || !skillGapInput}
+                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {skillGapLoading ? <Loader2 size={15} className="animate-spin"/> : <BrainCircuit size={15}/>} Analyze Skill Gap
+                      </button>
+                      {skillGapData && (
+                        <div className="p-4 bg-white/5 border border-indigo-500/20 rounded-lg text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+                          {skillGapData}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <footer className="bg-transparent border-t border-white/10 mt-12 px-6 py-8">
+            <div className="max-w-[1400px] mx-auto">
+              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-1.5">
+                <BarChart3 size={15} className="text-indigo-500"/> Data Sources &amp; Methodology
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed mb-3">
+                Career insights are synthesized from AI analysis of publicly available labor market data, industry reports, and academic research. Key sources include:
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <a href="https://www.weforum.org/publications/the-future-of-jobs-report-2025/" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                  World Economic Forum <ExternalLink size={10}/>
+                </a>
+                <a href="https://www.bls.gov/ooh/" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                  Bureau of Labor Statistics <ExternalLink size={10}/>
+                </a>
+                <a href="https://www.ilo.org/research" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                  International Labour Organization <ExternalLink size={10}/>
+                </a>
+                <a href="https://www.mckinsey.com/mgi/our-research" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                  McKinsey Global Institute <ExternalLink size={10}/>
+                </a>
+                <a href="https://hbr.org/topic/subject/technology" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                  Harvard Business Review <ExternalLink size={10}/>
+                </a>
+              </div>
+              <div className="mt-4 bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-4 flex items-start gap-2.5">
+                <Info size={16} className="text-indigo-500 flex-shrink-0 mt-0.5"/>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  <strong className="text-slate-100">Note on Dynamic Metrics:</strong> "Hired Last Week" and "Demand Scores" are AI-estimated metrics calculated dynamically upon generating or refreshing lists, based on trailing 7-day institutional reporting and macro hiring trends. They are approximations, not live counts.
+                </p>
+              </div>
+              <p className="text-xs text-slate-500 mt-4">Job Pulse &copy; 2026. AI-generated insights are estimates and should be used for career exploration, not as financial advice.</p>
+            </div>
+          </footer>
+
+        </div>
+      );
+    }
+
+    const root = window.createRoot(document.getElementById('root'));
+    root.render(React.createElement(FutureJobsPulse));
+  </script>
+
+  <script type="module">
+    import React, { useState, useEffect, useRef, useMemo } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import * as lucideReact from 'lucide-react';
+
+    // Initialize React FIRST (critical path)
+    window.fb = { ready: false };
+    try {
+      window.React = React;
+      window.useState = useState;
+      window.useEffect = useEffect;
+      window.useRef = useRef;
+      window.useMemo = useMemo;
+      window.createRoot = createRoot;
+      window.lucideReact = lucideReact;
+
+      const jsxCode = document.getElementById('jsx-code').textContent;
+      const compiled = Babel.transform(jsxCode, { presets: ['react'] }).code;
+      const script = document.createElement('script');
+      script.textContent = compiled;
+      document.body.appendChild(script);
+    } catch(err) {
+      document.getElementById('error-log').style.display = 'block';
+      document.getElementById('error-log').textContent = "Failed to load: " + err.message;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>
